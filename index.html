@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Bangi Picklers Reclub Score Converter</title>
+<title>Reclub Score Converter</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
   :root { --bg:#0a0a0f; --surface:#13131a; --border:#2a2a3a; --accent:#00ff9d; --accent2:#ff6b35; --text:#e8e8f0; --muted:#666680; }
@@ -42,6 +42,8 @@
   .btn-outline:hover { background:var(--accent); color:#000; }
   .btn-orange { background:var(--accent2); color:#fff; border:none; border-radius:10px; padding:9px 18px; font-family:'Syne',sans-serif; font-weight:700; font-size:12px; cursor:pointer; transition:all 0.2s; }
   .btn-orange:hover { background:#ff8555; }
+  .btn-standings { background:#1565c0; color:#fff; border:none; border-radius:10px; padding:9px 18px; font-family:'Syne',sans-serif; font-weight:700; font-size:12px; cursor:pointer; transition:all 0.2s; }
+  .btn-standings:hover { background:#1976d2; transform:translateY(-1px); }
 
   .tabs-row { display:flex; gap:4px; margin-bottom:14px; overflow-x:auto; padding-bottom:4px; flex-wrap:nowrap; }
   .tab { padding:8px 14px; border-radius:8px; font-size:11px; letter-spacing:1px; text-transform:uppercase; cursor:pointer; border:1px solid var(--border); color:var(--muted); background:transparent; font-family:'Space Mono',monospace; white-space:nowrap; transition:all 0.2s; }
@@ -71,14 +73,20 @@
   .score-win { color:var(--accent); font-weight:700; font-size:15px; }
   .score-loss { color:var(--muted); font-size:15px; }
   .vs { color:var(--border); font-size:10px; text-align:center; }
+
   .badge { display:inline-block; padding:2px 7px; border-radius:4px; font-size:10px; font-weight:700; }
-  .badge-gold { background:#ffd70020; color:#ffd700; border:1px solid #ffd70040; }
+  .badge-gold   { background:#ffd70020; color:#ffd700; border:1px solid #ffd70040; }
   .badge-silver { background:#c0c0c020; color:#c0c0c0; border:1px solid #c0c0c040; }
   .badge-bronze { background:#cd7f3220; color:#cd7f32; border:1px solid #cd7f3240; }
+  .tie-tag { font-size:9px; color:#ff6b35; font-weight:700; margin-left:4px; }
+
   .pct-bar { display:flex; align-items:center; gap:6px; white-space:nowrap; }
-  .bar-bg { width:40px; height:4px; background:var(--border); border-radius:2px; flex-shrink:0; }
+  .bar-bg  { width:40px; height:4px; background:var(--border); border-radius:2px; flex-shrink:0; }
   .bar-fill { height:100%; border-radius:2px; background:linear-gradient(90deg,var(--accent),#00ccff); }
   .rank-num { color:var(--muted); font-size:11px; }
+  .win  { color:var(--accent); font-weight:700; }
+  .loss { color:var(--muted); }
+
   @keyframes spin { to{transform:rotate(360deg)} }
   @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
 </style>
@@ -113,13 +121,14 @@
     </div>
     <div class="export-btns">
       <button class="btn-outline" onclick="exportCSV()">↓ CSV</button>
-      <button class="btn-orange" onclick="exportExcel()">↓ Excel</button>
+      <button class="btn-orange" onclick="exportExcel()">↓ Excel (All)</button>
+      <button class="btn-standings" onclick="exportStandingsByCourt()">↓ Standings by Court</button>
     </div>
   </div>
   <div class="tabs-row" id="allTabs"></div>
-  <div id="tab-overall"    class="tab-content active"><div class="table-wrap"><table id="tStandings"></table></div></div>
+  <div id="tab-overall"     class="tab-content active"><div class="table-wrap"><table id="tStandings"></table></div></div>
   <div id="tab-courtstands" class="tab-content"><div class="court-grid" id="courtGrid"></div></div>
-  <div id="tab-allmatches" class="tab-content"><div class="table-wrap"><table id="tAll"></table></div></div>
+  <div id="tab-allmatches"  class="tab-content"><div class="table-wrap"><table id="tAll"></table></div></div>
   <div id="courtTabContents"></div>
 </div>
 
@@ -130,7 +139,7 @@ let MATCHES = [], COURTS = [], overall = {};
 function setProgress(pct, msg, type='loading') {
   document.getElementById('progressFill').style.width = pct + '%';
   document.getElementById('statusMsg').textContent = msg;
-  document.getElementById('spinner').style.display = type === 'loading' ? 'block' : 'none';
+  document.getElementById('spinner').style.display = type==='loading' ? 'block' : 'none';
   const ps = document.getElementById('progressStatus');
   ps.className = 'progress-status' + (type==='ok' ? ' status-ok' : type==='err' ? ' status-err' : '');
 }
@@ -147,21 +156,15 @@ async function loadMatch() {
   try {
     const res = await fetch('/fetch?url=' + encodeURIComponent(rawUrl));
     const data = await res.json();
-
     if (data.error) throw new Error(data.error);
-    if (!data.matches || data.matches.length === 0) throw new Error('No matches found — check the URL is a Reclub score sheet');
+    if (!data.matches || data.matches.length === 0) throw new Error('No matches found — check the URL');
 
     setProgress(70, 'Building standings...');
     MATCHES = data.matches;
 
-    // Detect courts
     const courtSet = new Set(MATCHES.map(m => m.court));
-    COURTS = [...courtSet].sort((a,b) => {
-      const na = parseInt(a.replace(/\D/g,'')), nb = parseInt(b.replace(/\D/g,''));
-      return na - nb;
-    });
+    COURTS = [...courtSet].sort((a,b) => parseInt(a.replace(/\D/g,'')) - parseInt(b.replace(/\D/g,'')));
 
-    // Build overall standings
     overall = {};
     MATCHES.forEach(m => {
       const w1 = m.s1 > m.s2;
@@ -173,10 +176,8 @@ async function loadMatch() {
     });
 
     setProgress(100, `✓ ${MATCHES.length} matches · ${Object.keys(overall).length} players · ${COURTS.length} courts`, 'ok');
-
     document.getElementById('matchTitle').textContent = data.title || 'Match Results';
     document.getElementById('matchMeta').textContent = (data.date || '') + ` · ${MATCHES.length} matches · ${Object.keys(overall).length} players`;
-
     renderAll();
     document.getElementById('results').classList.add('show');
 
@@ -187,7 +188,74 @@ async function loadMatch() {
   document.getElementById('loadBtn').disabled = false;
 }
 
-function courtStandings(court) {
+// Sort: Wins DESC → Score Diff DESC (tiebreaker)
+function sortPlayers(entries) {
+  return entries
+    .map(([n,d]) => ({n, ...d, diff: d.pf - d.pa, pct: (d.w+d.l)>0 ? d.w/(d.w+d.l) : 0}))
+    .sort((a,b) => b.w - a.w || b.diff - a.diff);
+}
+
+function badge(i) {
+  return i===0 ? '<span class="badge badge-gold">1</span>'
+       : i===1 ? '<span class="badge badge-silver">2</span>'
+       : i===2 ? '<span class="badge badge-bronze">3</span>'
+       : `<span class="rank-num">${i+1}</span>`;
+}
+
+function isTied(sorted, i) {
+  return (i > 0 && sorted[i-1].w === sorted[i].w) ||
+         (i < sorted.length-1 && sorted[i+1].w === sorted[i].w);
+}
+
+// Overall standings — full columns
+function standingsHTML(s) {
+  const sorted = sortPlayers(Object.entries(s));
+  let h = `<tr>
+    <th>#</th><th>Player</th><th>W</th><th>L</th><th>Win%</th><th>PF</th><th>PA</th>
+    <th>+/- <span style="font-size:9px;opacity:0.5;text-transform:none">(tiebreak)</span></th>
+  </tr>`;
+  sorted.forEach((p,i) => {
+    const tied = isTied(sorted, i);
+    const tieTag = tied ? '<span class="tie-tag">TIE</span>' : '';
+    const pct = (p.pct*100).toFixed(0);
+    h += `<tr>
+      <td>${badge(i)}</td>
+      <td>${p.n} ${tieTag}</td>
+      <td class="win">${p.w}</td>
+      <td class="loss">${p.l}</td>
+      <td><div class="pct-bar"><div class="bar-bg"><div class="bar-fill" style="width:${pct}%"></div></div>${pct}%</div></td>
+      <td>${p.pf}</td><td>${p.pa}</td>
+      <td style="color:${p.diff>=0?'var(--accent)':'#ff6b6b'};font-weight:${tied?'700':'400'}">${p.diff>=0?'+':''}${p.diff}</td>
+    </tr>`;
+  });
+  return h;
+}
+
+// Court card standings — compact: W L +/- Win%
+function courtStandingsHTML(s) {
+  const sorted = sortPlayers(Object.entries(s));
+  let h = `<tr>
+    <th>#</th><th>Player</th><th>W</th><th>L</th>
+    <th>+/- <span style="font-size:8px;opacity:0.5;text-transform:none">(tiebreak)</span></th>
+    <th>Win%</th>
+  </tr>`;
+  sorted.forEach((p,i) => {
+    const tied = isTied(sorted, i);
+    const tieTag = tied ? '<span class="tie-tag">TIE</span>' : '';
+    const pct = (p.pct*100).toFixed(0);
+    h += `<tr>
+      <td>${badge(i)}</td>
+      <td>${p.n} ${tieTag}</td>
+      <td class="win">${p.w}</td>
+      <td class="loss">${p.l}</td>
+      <td style="color:${p.diff>=0?'var(--accent)':'#ff6b6b'};font-weight:700">${p.diff>=0?'+':''}${p.diff}</td>
+      <td><div class="pct-bar"><div class="bar-bg"><div class="bar-fill" style="width:${pct}%"></div></div>${pct}%</div></td>
+    </tr>`;
+  });
+  return h;
+}
+
+function courtStandingsLocal(court) {
   const s = {};
   MATCHES.filter(m => m.court === court).forEach(m => {
     const w1 = m.s1 > m.s2;
@@ -200,44 +268,11 @@ function courtStandings(court) {
   return s;
 }
 
-function standingsHTML(s) {
-  // Full table — used for Overall tab
-  const sorted = Object.entries(s).map(([n,d]) => ({n,...d,pct:(d.w+d.l)>0?d.w/(d.w+d.l):0})).sort((a,b)=>b.pct-a.pct||b.w-a.w);
-  let h = `<tr><th>#</th><th>Player</th><th>W</th><th>L</th><th>Win%</th><th>PF</th><th>PA</th><th>+/-</th></tr>`;
-  sorted.forEach((p,i) => {
-    const b = i===0?'<span class="badge badge-gold">1</span>':i===1?'<span class="badge badge-silver">2</span>':i===2?'<span class="badge badge-bronze">3</span>':`<span class="rank-num">${i+1}</span>`;
-    const pct=(p.pct*100).toFixed(0), d=p.pf-p.pa;
-    h+=`<tr><td>${b}</td><td>${p.n}</td><td class="win">${p.w}</td><td class="loss">${p.l}</td>
-      <td><div class="pct-bar"><div class="bar-bg"><div class="bar-fill" style="width:${pct}%"></div></div>${pct}%</div></td>
-      <td>${p.pf}</td><td>${p.pa}</td><td style="color:${d>=0?'var(--accent)':'#ff6b6b'}">${d>=0?'+':''}${d}</td></tr>`;
-  });
-  return h;
-}
-
-function courtStandingsHTML(s) {
-  // Compact table — used inside court cards: W, L, +/-, Win% only
-  const sorted = Object.entries(s).map(([n,d]) => ({n,...d,pct:(d.w+d.l)>0?d.w/(d.w+d.l):0})).sort((a,b)=>b.pct-a.pct||b.w-a.w);
-  let h = `<tr><th>#</th><th>Player</th><th>W</th><th>L</th><th>+/-</th><th>Win%</th></tr>`;
-  sorted.forEach((p,i) => {
-    const b = i===0?'<span class="badge badge-gold">1</span>':i===1?'<span class="badge badge-silver">2</span>':i===2?'<span class="badge badge-bronze">3</span>':`<span class="rank-num">${i+1}</span>`;
-    const pct=(p.pct*100).toFixed(0), d=p.pf-p.pa;
-    h+=`<tr>
-      <td>${b}</td>
-      <td>${p.n}</td>
-      <td class="win">${p.w}</td>
-      <td class="loss">${p.l}</td>
-      <td style="color:${d>=0?'var(--accent)':'#ff6b6b'};font-weight:700">${d>=0?'+':''}${d}</td>
-      <td><div class="pct-bar"><div class="bar-bg"><div class="bar-fill" style="width:${pct}%"></div></div>${pct}%</div></td>
-    </tr>`;
-  });
-  return h;
-}
-
-function winTeam(m) { return m.s1>m.s2?1:2; }
-function winner(m)  { return winTeam(m)===1?`${m.t1a} / ${m.t1b}`:`${m.t2a} / ${m.t2b}`; }
+function winTeam(m) { return m.s1 > m.s2 ? 1 : 2; }
+function winner(m)  { return winTeam(m)===1 ? `${m.t1a} / ${m.t1b}` : `${m.t2a} / ${m.t2b}`; }
 
 function matchRow(m) {
-  const wt=winTeam(m);
+  const wt = winTeam(m);
   return `<tr>
     <td>R${m.round}</td><td>${m.court}</td>
     <td><div class="team ${wt===1?'win-team':''}"><span>${m.t1a}</span><span>${m.t1b}</span></div></td>
@@ -249,18 +284,19 @@ function matchRow(m) {
 }
 
 function renderAll() {
-  // Overall standings
+  // Overall
   document.getElementById('tStandings').innerHTML = standingsHTML(overall);
 
-  // Court standings grid
+  // By Court grid
   const grid = document.getElementById('courtGrid');
   grid.innerHTML = '';
   COURTS.forEach(court => {
-    const s = courtStandings(court);
-    const mc = MATCHES.filter(m=>m.court===court).length;
+    const s = courtStandingsLocal(court);
+    const mc = MATCHES.filter(m => m.court === court).length;
     const card = document.createElement('div');
     card.className = 'court-card';
-    card.innerHTML = `<div class="court-card-header"><h3>🏓 ${court}</h3><span>${mc} matches</span></div><table>${courtStandingsHTML(s)}</table>`;
+    card.innerHTML = `<div class="court-card-header"><h3>🏓 ${court}</h3><span>${mc} matches</span></div>
+      <table>${courtStandingsHTML(s)}</table>`;
     grid.appendChild(card);
   });
 
@@ -269,24 +305,22 @@ function renderAll() {
   MATCHES.forEach(m => h += matchRow(m));
   document.getElementById('tAll').innerHTML = h;
 
-  // Build tab bar + per-court content
+  // Dynamic tabs
   const tabsRow = document.getElementById('allTabs');
   const contents = document.getElementById('courtTabContents');
-  tabsRow.innerHTML = '';
-  contents.innerHTML = '';
+  tabsRow.innerHTML = ''; contents.innerHTML = '';
 
-  const staticTabs = [
+  const tabDefs = [
     {id:'overall',     label:'🏆 Overall'},
     {id:'courtstands', label:'📊 By Court'},
     {id:'allmatches',  label:'📋 All Matches'},
+    ...COURTS.map((c,i) => ({id:'court_'+i, label:c}))
   ];
-  const allTabDefs = [...staticTabs, ...COURTS.map((c,i) => ({id:'court_'+i, label:c}))];
-
-  allTabDefs.forEach((t, idx) => {
+  tabDefs.forEach((t, idx) => {
     const btn = document.createElement('button');
-    btn.className = 'tab' + (idx===0?' active':'');
+    btn.className = 'tab' + (idx===0 ? ' active' : '');
     btn.textContent = t.label;
-    btn.onclick = function(){ switchTab(t.id, this); };
+    btn.onclick = function() { switchTab(t.id, this); };
     tabsRow.appendChild(btn);
   });
 
@@ -295,49 +329,89 @@ function renderAll() {
     div.className = 'tab-content';
     div.id = 'tab-court_' + idx;
     let ch = `<tr><th>Rnd</th><th>Court</th><th>Team 1</th><th>Sc</th><th></th><th>Sc</th><th>Team 2</th></tr>`;
-    MATCHES.filter(m=>m.court===court).forEach(m => ch += matchRow(m));
+    MATCHES.filter(m => m.court === court).forEach(m => ch += matchRow(m));
     div.innerHTML = `<div class="table-wrap"><table>${ch}</table></div>`;
     contents.appendChild(div);
   });
 }
 
 function switchTab(name, el) {
-  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
-  document.getElementById('tab-'+name).classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
 }
 
 function exportCSV() {
-  const rows=[['Round','Court','T1 P1','T1 P2','Score 1','Score 2','T2 P1','T2 P2','Winner']];
-  MATCHES.forEach(m=>rows.push([m.round,m.court,m.t1a,m.t1b,m.s1,m.s2,m.t2a,m.t2b,winner(m)]));
-  const csv=rows.map(r=>r.map(c=>`"${c}"`).join(',')).join('\n');
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
-  a.download='reclub_scores.csv'; a.click();
+  const rows = [['Round','Court','T1 P1','T1 P2','Score 1','Score 2','T2 P1','T2 P2','Winner']];
+  MATCHES.forEach(m => rows.push([m.round,m.court,m.t1a,m.t1b,m.s1,m.s2,m.t2a,m.t2b,winner(m)]));
+  const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+  a.download = 'reclub_scores.csv'; a.click();
 }
 
 function exportExcel() {
-  const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([
+  const wb = XLSX.utils.book_new();
+
+  // All matches sheet
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
     ['Round','Court','T1 P1','T1 P2','Score 1','Score 2','T2 P1','T2 P2','Winner'],
-    ...MATCHES.map(m=>[m.round,m.court,m.t1a,m.t1b,m.s1,m.s2,m.t2a,m.t2b,winner(m)])
-  ]),'All Matches');
-  const ovS=Object.entries(overall).map(([n,s])=>[n,s.w,s.l,s.w+s.l>0?+(s.w/(s.w+s.l)*100).toFixed(1):0,s.pf,s.pa,s.pf-s.pa]).sort((a,b)=>b[3]-a[3]);
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Player','W','L','Win%','PF','PA','+/-'],...ovS]),'Overall Standings');
-  COURTS.forEach(ct=>{
-    const ms=MATCHES.filter(m=>m.court===ct);
-    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([
+    ...MATCHES.map(m => [m.round,m.court,m.t1a,m.t1b,m.s1,m.s2,m.t2a,m.t2b,winner(m)])
+  ]), 'All Matches');
+
+  // Overall standings sheet — sorted by W then score diff
+  const ovS = sortPlayers(Object.entries(overall))
+    .map(p => [p.n, p.w, p.l, +(p.pct*100).toFixed(1), p.pf, p.pa, p.diff]);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+    ['Player','W','L','Win%','PF','PA','+/-'], ...ovS
+  ]), 'Overall Standings');
+
+  // Per court sheets
+  COURTS.forEach(ct => {
+    const ms = MATCHES.filter(m => m.court === ct);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
       ['Round','T1 P1','T1 P2','Score 1','Score 2','T2 P1','T2 P2','Winner'],
-      ...ms.map(m=>[m.round,m.t1a,m.t1b,m.s1,m.s2,m.t2a,m.t2b,winner(m)])
-    ]),ct+' Matches');
-    const cs=courtStandings(ct);
-    const csS=Object.entries(cs).map(([n,s])=>[n,s.w,s.l,s.w+s.l>0?+(s.w/(s.w+s.l)*100).toFixed(1):0,s.pf,s.pa,s.pf-s.pa]).sort((a,b)=>b[3]-a[3]);
-    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Player','W','L','Win%','PF','PA','+/-'],...csS]),ct+' Standings');
+      ...ms.map(m => [m.round,m.t1a,m.t1b,m.s1,m.s2,m.t2a,m.t2b,winner(m)])
+    ]), ct + ' Matches');
+
+    const cs = courtStandingsLocal(ct);
+    const csS = sortPlayers(Object.entries(cs))
+      .map(p => [p.n, p.w, p.l, +(p.pct*100).toFixed(1), p.pf, p.pa, p.diff]);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+      ['Player','W','L','Win%','PF','PA','+/-'], ...csS
+    ]), ct + ' Standings');
   });
-  XLSX.writeFile(wb,'reclub_scores.xlsx');
+
+  XLSX.writeFile(wb, 'reclub_scores.xlsx');
 }
 
+
+function exportStandingsByCourt() {
+  const wb = XLSX.utils.book_new();
+
+  // Sheet 1: All courts combined summary
+  const summaryRows = [['Court','Rank','Player','W','L','+/-','Win%']];
+  COURTS.forEach(ct => {
+    const cs = courtStandingsLocal(ct);
+    sortPlayers(Object.entries(cs)).forEach((p,i) => {
+      summaryRows.push([ct, i+1, p.n, p.w, p.l, p.diff, +(p.pct*100).toFixed(1)]);
+    });
+    summaryRows.push(['','','','','','','']); // blank row between courts
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryRows), 'All Courts Summary');
+
+  // One sheet per court
+  COURTS.forEach(ct => {
+    const cs = courtStandingsLocal(ct);
+    const rows = [['Rank','Player','W','L','+/-','Win%'],
+      ...sortPlayers(Object.entries(cs)).map((p,i) => [i+1, p.n, p.w, p.l, p.diff, +(p.pct*100).toFixed(1)])
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), ct);
+  });
+
+  XLSX.writeFile(wb, 'standings_by_court.xlsx');
+}
 document.getElementById('urlInput').addEventListener('keydown', e => { if(e.key==='Enter') loadMatch(); });
 </script>
 </body>
