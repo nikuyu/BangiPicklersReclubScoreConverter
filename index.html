@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reclub Score Converter</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#0a0a0f; --surface:#13131a; --border:#2a2a3a; --accent:#00ff9d; --accent2:#ff6b35; --text:#e8e8f0; --muted:#666680; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:'Space Mono',monospace; min-height:100vh; display:flex; flex-direction:column; align-items:center; padding:40px 20px; background-image:radial-gradient(ellipse at 20% 20%,#00ff9d08 0%,transparent 60%),radial-gradient(ellipse at 80% 80%,#ff6b3508 0%,transparent 60%); }
+  .header { text-align:center; margin-bottom:32px; }
+  .header h1 { font-family:'Syne',sans-serif; font-size:clamp(26px,5vw,44px); font-weight:800; letter-spacing:-1px; background:linear-gradient(135deg,var(--accent),#00ccff); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; margin-bottom:6px; }
+  .header p { color:var(--muted); font-size:11px; letter-spacing:2px; text-transform:uppercase; }
+
+  .loader-card { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:28px 32px; width:100%; max-width:1100px; margin-bottom:24px; }
+  .loader-card label { display:block; font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--accent); margin-bottom:10px; }
+  .input-row { display:flex; gap:10px; }
+  input[type="text"] { flex:1; background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:13px 16px; color:var(--text); font-family:'Space Mono',monospace; font-size:13px; outline:none; transition:border-color 0.2s; min-width:0; }
+  input[type="text"]:focus { border-color:var(--accent); }
+  input[type="text"]::placeholder { color:var(--muted); }
+  .btn-load { background:var(--accent); color:#000; border:none; border-radius:10px; padding:13px 28px; font-family:'Syne',sans-serif; font-weight:800; font-size:14px; cursor:pointer; transition:all 0.2s; white-space:nowrap; }
+  .btn-load:hover { background:#00e68a; transform:translateY(-1px); }
+  .btn-load:disabled { opacity:0.4; cursor:not-allowed; transform:none; }
+
+  .progress-wrap { margin-top:16px; display:none; }
+  .progress-wrap.show { display:block; }
+  .progress-bar-bg { width:100%; height:4px; background:var(--border); border-radius:2px; overflow:hidden; margin-bottom:10px; }
+  .progress-bar-fill { height:100%; background:linear-gradient(90deg,var(--accent),#00ccff); border-radius:2px; width:0%; transition:width 0.4s ease; }
+  .progress-status { font-size:12px; color:var(--muted); display:flex; align-items:center; gap:8px; }
+  .spinner { width:14px; height:14px; border:2px solid #00ff9d30; border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite; flex-shrink:0; }
+  .status-ok { color:var(--accent) !important; }
+  .status-err { color:#ff6b6b !important; }
+
+  .results { display:none; width:100%; max-width:1100px; }
+  .results.show { display:block; animation:fadeUp 0.4s ease; }
+  .topbar { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:18px 24px; margin-bottom:18px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; }
+  .match-info h2 { font-family:'Syne',sans-serif; font-size:14px; font-weight:700; margin-bottom:3px; }
+  .match-info p { color:var(--muted); font-size:11px; }
+  .export-btns { display:flex; gap:10px; }
+  .btn-outline { background:transparent; border:1px solid var(--accent); color:var(--accent); border-radius:10px; padding:9px 18px; font-family:'Syne',sans-serif; font-weight:700; font-size:12px; cursor:pointer; transition:all 0.2s; }
+  .btn-outline:hover { background:var(--accent); color:#000; }
+  .btn-orange { background:var(--accent2); color:#fff; border:none; border-radius:10px; padding:9px 18px; font-family:'Syne',sans-serif; font-weight:700; font-size:12px; cursor:pointer; transition:all 0.2s; }
+  .btn-orange:hover { background:#ff8555; }
+
+  .tabs-row { display:flex; gap:4px; margin-bottom:14px; overflow-x:auto; padding-bottom:4px; flex-wrap:nowrap; }
+  .tab { padding:8px 14px; border-radius:8px; font-size:11px; letter-spacing:1px; text-transform:uppercase; cursor:pointer; border:1px solid var(--border); color:var(--muted); background:transparent; font-family:'Space Mono',monospace; white-space:nowrap; transition:all 0.2s; }
+  .tab.active { background:var(--accent); color:#000; border-color:var(--accent); font-weight:700; }
+  .tab-content { display:none; }
+  .tab-content.active { display:block; }
+
+  .court-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:20px; }
+  .court-card { background:var(--surface); border:1px solid var(--border); border-radius:14px; overflow:hidden; }
+  .court-card-header { padding:13px 18px; background:#1a1a24; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
+  .court-card-header h3 { font-family:'Syne',sans-serif; font-size:13px; font-weight:800; color:var(--accent); }
+  .court-card-header span { color:var(--muted); font-size:11px; }
+
+  .table-wrap { overflow-x:auto; border-radius:12px; border:1px solid var(--border); }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  th { background:#1a1a24; padding:10px 14px; text-align:left; font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--accent); white-space:nowrap; }
+  td { padding:9px 14px; border-top:1px solid var(--border); }
+  tr:hover td { background:#ffffff05; }
+  .court-card table td { padding:7px 12px; font-size:11px; }
+  .court-card table th { font-size:9px; padding:8px 12px; background:#111118; }
+
+  .team { line-height:1.65; }
+  .team span { display:block; }
+  .team span:last-child { color:var(--muted); font-size:11px; }
+  .win-team span { color:var(--accent); font-weight:700; }
+  .win-team span:last-child { color:#00cc7a; }
+  .score-win { color:var(--accent); font-weight:700; font-size:15px; }
+  .score-loss { color:var(--muted); font-size:15px; }
+  .vs { color:var(--border); font-size:10px; text-align:center; }
+  .badge { display:inline-block; padding:2px 7px; border-radius:4px; font-size:10px; font-weight:700; }
+  .badge-gold { background:#ffd70020; color:#ffd700; border:1px solid #ffd70040; }
+  .badge-silver { background:#c0c0c020; color:#c0c0c0; border:1px solid #c0c0c040; }
+  .badge-bronze { background:#cd7f3220; color:#cd7f32; border:1px solid #cd7f3240; }
+  .pct-bar { display:flex; align-items:center; gap:6px; white-space:nowrap; }
+  .bar-bg { width:40px; height:4px; background:var(--border); border-radius:2px; flex-shrink:0; }
+  .bar-fill { height:100%; border-radius:2px; background:linear-gradient(90deg,var(--accent),#00ccff); }
+  .rank-num { color:var(--muted); font-size:11px; }
+  @keyframes spin { to{transform:rotate(360deg)} }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>⚡ Reclub Converter</h1>
+  <p>Any match · Any week · Instant spreadsheet</p>
+</div>
+
+<div class="loader-card">
+  <label>Paste your Reclub score sheet URL</label>
+  <div class="input-row">
+    <input type="text" id="urlInput" placeholder="https://api.reclub.co/export/score-sheets?m=XXXXXX" />
+    <button class="btn-load" id="loadBtn" onclick="loadMatch()">Load Match</button>
+  </div>
+  <div class="progress-wrap" id="progressWrap">
+    <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressFill"></div></div>
+    <div class="progress-status" id="progressStatus">
+      <div class="spinner" id="spinner"></div>
+      <span id="statusMsg">Loading...</span>
+    </div>
+  </div>
+</div>
+
+<div class="results" id="results">
+  <div class="topbar">
+    <div class="match-info">
+      <h2 id="matchTitle">—</h2>
+      <p id="matchMeta">—</p>
+    </div>
+    <div class="export-btns">
+      <button class="btn-outline" onclick="exportCSV()">↓ CSV</button>
+      <button class="btn-orange" onclick="exportExcel()">↓ Excel</button>
+    </div>
+  </div>
+  <div class="tabs-row" id="allTabs"></div>
+  <div id="tab-overall"    class="tab-content active"><div class="table-wrap"><table id="tStandings"></table></div></div>
+  <div id="tab-courtstands" class="tab-content"><div class="court-grid" id="courtGrid"></div></div>
+  <div id="tab-allmatches" class="tab-content"><div class="table-wrap"><table id="tAll"></table></div></div>
+  <div id="courtTabContents"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+let MATCHES = [], COURTS = [], overall = {};
+
+function setProgress(pct, msg, type='loading') {
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('statusMsg').textContent = msg;
+  document.getElementById('spinner').style.display = type === 'loading' ? 'block' : 'none';
+  const ps = document.getElementById('progressStatus');
+  ps.className = 'progress-status' + (type==='ok' ? ' status-ok' : type==='err' ? ' status-err' : '');
+}
+
+async function loadMatch() {
+  const rawUrl = document.getElementById('urlInput').value.trim();
+  if (!rawUrl) { alert('Please paste a Reclub URL!'); return; }
+
+  document.getElementById('loadBtn').disabled = true;
+  document.getElementById('progressWrap').classList.add('show');
+  document.getElementById('results').classList.remove('show');
+  setProgress(20, 'Fetching score sheet...');
+
+  try {
+    const res = await fetch('/fetch?url=' + encodeURIComponent(rawUrl));
+    const data = await res.json();
+
+    if (data.error) throw new Error(data.error);
+    if (!data.matches || data.matches.length === 0) throw new Error('No matches found — check the URL is a Reclub score sheet');
+
+    setProgress(70, 'Building standings...');
+    MATCHES = data.matches;
+
+    // Detect courts
+    const courtSet = new Set(MATCHES.map(m => m.court));
+    COURTS = [...courtSet].sort((a,b) => {
+      const na = parseInt(a.replace(/\D/g,'')), nb = parseInt(b.replace(/\D/g,''));
+      return na - nb;
+    });
+
+    // Build overall standings
+    overall = {};
+    MATCHES.forEach(m => {
+      const w1 = m.s1 > m.s2;
+      [[m.t1a,m.s1,m.s2,w1],[m.t1b,m.s1,m.s2,w1],[m.t2a,m.s2,m.s1,!w1],[m.t2b,m.s2,m.s1,!w1]].forEach(([p,pf,pa,win]) => {
+        if (!overall[p]) overall[p] = {w:0,l:0,pf:0,pa:0};
+        overall[p].pf += pf; overall[p].pa += pa;
+        win ? overall[p].w++ : overall[p].l++;
+      });
+    });
+
+    setProgress(100, `✓ ${MATCHES.length} matches · ${Object.keys(overall).length} players · ${COURTS.length} courts`, 'ok');
+
+    document.getElementById('matchTitle').textContent = data.title || 'Match Results';
+    document.getElementById('matchMeta').textContent = (data.date || '') + ` · ${MATCHES.length} matches · ${Object.keys(overall).length} players`;
+
+    renderAll();
+    document.getElementById('results').classList.add('show');
+
+  } catch(e) {
+    console.error(e);
+    setProgress(100, '✗ ' + e.message, 'err');
+  }
+  document.getElementById('loadBtn').disabled = false;
+}
+
+function courtStandings(court) {
+  const s = {};
+  MATCHES.filter(m => m.court === court).forEach(m => {
+    const w1 = m.s1 > m.s2;
+    [[m.t1a,m.s1,m.s2,w1],[m.t1b,m.s1,m.s2,w1],[m.t2a,m.s2,m.s1,!w1],[m.t2b,m.s2,m.s1,!w1]].forEach(([p,pf,pa,win]) => {
+      if (!s[p]) s[p] = {w:0,l:0,pf:0,pa:0};
+      s[p].pf += pf; s[p].pa += pa;
+      win ? s[p].w++ : s[p].l++;
+    });
+  });
+  return s;
+}
+
+function standingsHTML(s) {
+  // Full table — used for Overall tab
+  const sorted = Object.entries(s).map(([n,d]) => ({n,...d,pct:(d.w+d.l)>0?d.w/(d.w+d.l):0})).sort((a,b)=>b.pct-a.pct||b.w-a.w);
+  let h = `<tr><th>#</th><th>Player</th><th>W</th><th>L</th><th>Win%</th><th>PF</th><th>PA</th><th>+/-</th></tr>`;
+  sorted.forEach((p,i) => {
+    const b = i===0?'<span class="badge badge-gold">1</span>':i===1?'<span class="badge badge-silver">2</span>':i===2?'<span class="badge badge-bronze">3</span>':`<span class="rank-num">${i+1}</span>`;
+    const pct=(p.pct*100).toFixed(0), d=p.pf-p.pa;
+    h+=`<tr><td>${b}</td><td>${p.n}</td><td class="win">${p.w}</td><td class="loss">${p.l}</td>
+      <td><div class="pct-bar"><div class="bar-bg"><div class="bar-fill" style="width:${pct}%"></div></div>${pct}%</div></td>
+      <td>${p.pf}</td><td>${p.pa}</td><td style="color:${d>=0?'var(--accent)':'#ff6b6b'}">${d>=0?'+':''}${d}</td></tr>`;
+  });
+  return h;
+}
+
+function courtStandingsHTML(s) {
+  // Compact table — used inside court cards: W, L, +/-, Win% only
+  const sorted = Object.entries(s).map(([n,d]) => ({n,...d,pct:(d.w+d.l)>0?d.w/(d.w+d.l):0})).sort((a,b)=>b.pct-a.pct||b.w-a.w);
+  let h = `<tr><th>#</th><th>Player</th><th>W</th><th>L</th><th>+/-</th><th>Win%</th></tr>`;
+  sorted.forEach((p,i) => {
+    const b = i===0?'<span class="badge badge-gold">1</span>':i===1?'<span class="badge badge-silver">2</span>':i===2?'<span class="badge badge-bronze">3</span>':`<span class="rank-num">${i+1}</span>`;
+    const pct=(p.pct*100).toFixed(0), d=p.pf-p.pa;
+    h+=`<tr>
+      <td>${b}</td>
+      <td>${p.n}</td>
+      <td class="win">${p.w}</td>
+      <td class="loss">${p.l}</td>
+      <td style="color:${d>=0?'var(--accent)':'#ff6b6b'};font-weight:700">${d>=0?'+':''}${d}</td>
+      <td><div class="pct-bar"><div class="bar-bg"><div class="bar-fill" style="width:${pct}%"></div></div>${pct}%</div></td>
+    </tr>`;
+  });
+  return h;
+}
+
+function winTeam(m) { return m.s1>m.s2?1:2; }
+function winner(m)  { return winTeam(m)===1?`${m.t1a} / ${m.t1b}`:`${m.t2a} / ${m.t2b}`; }
+
+function matchRow(m) {
+  const wt=winTeam(m);
+  return `<tr>
+    <td>R${m.round}</td><td>${m.court}</td>
+    <td><div class="team ${wt===1?'win-team':''}"><span>${m.t1a}</span><span>${m.t1b}</span></div></td>
+    <td class="${m.s1>m.s2?'score-win':'score-loss'}">${m.s1}</td>
+    <td class="vs">vs</td>
+    <td class="${m.s2>m.s1?'score-win':'score-loss'}">${m.s2}</td>
+    <td><div class="team ${wt===2?'win-team':''}"><span>${m.t2a}</span><span>${m.t2b}</span></div></td>
+  </tr>`;
+}
+
+function renderAll() {
+  // Overall standings
+  document.getElementById('tStandings').innerHTML = standingsHTML(overall);
+
+  // Court standings grid
+  const grid = document.getElementById('courtGrid');
+  grid.innerHTML = '';
+  COURTS.forEach(court => {
+    const s = courtStandings(court);
+    const mc = MATCHES.filter(m=>m.court===court).length;
+    const card = document.createElement('div');
+    card.className = 'court-card';
+    card.innerHTML = `<div class="court-card-header"><h3>🏓 ${court}</h3><span>${mc} matches</span></div><table>${courtStandingsHTML(s)}</table>`;
+    grid.appendChild(card);
+  });
+
+  // All matches
+  let h = `<tr><th>Rnd</th><th>Court</th><th>Team 1</th><th>Sc</th><th></th><th>Sc</th><th>Team 2</th></tr>`;
+  MATCHES.forEach(m => h += matchRow(m));
+  document.getElementById('tAll').innerHTML = h;
+
+  // Build tab bar + per-court content
+  const tabsRow = document.getElementById('allTabs');
+  const contents = document.getElementById('courtTabContents');
+  tabsRow.innerHTML = '';
+  contents.innerHTML = '';
+
+  const staticTabs = [
+    {id:'overall',     label:'🏆 Overall'},
+    {id:'courtstands', label:'📊 By Court'},
+    {id:'allmatches',  label:'📋 All Matches'},
+  ];
+  const allTabDefs = [...staticTabs, ...COURTS.map((c,i) => ({id:'court_'+i, label:c}))];
+
+  allTabDefs.forEach((t, idx) => {
+    const btn = document.createElement('button');
+    btn.className = 'tab' + (idx===0?' active':'');
+    btn.textContent = t.label;
+    btn.onclick = function(){ switchTab(t.id, this); };
+    tabsRow.appendChild(btn);
+  });
+
+  COURTS.forEach((court, idx) => {
+    const div = document.createElement('div');
+    div.className = 'tab-content';
+    div.id = 'tab-court_' + idx;
+    let ch = `<tr><th>Rnd</th><th>Court</th><th>Team 1</th><th>Sc</th><th></th><th>Sc</th><th>Team 2</th></tr>`;
+    MATCHES.filter(m=>m.court===court).forEach(m => ch += matchRow(m));
+    div.innerHTML = `<div class="table-wrap"><table>${ch}</table></div>`;
+    contents.appendChild(div);
+  });
+}
+
+function switchTab(name, el) {
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tab-'+name).classList.add('active');
+}
+
+function exportCSV() {
+  const rows=[['Round','Court','T1 P1','T1 P2','Score 1','Score 2','T2 P1','T2 P2','Winner']];
+  MATCHES.forEach(m=>rows.push([m.round,m.court,m.t1a,m.t1b,m.s1,m.s2,m.t2a,m.t2b,winner(m)]));
+  const csv=rows.map(r=>r.map(c=>`"${c}"`).join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download='reclub_scores.csv'; a.click();
+}
+
+function exportExcel() {
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([
+    ['Round','Court','T1 P1','T1 P2','Score 1','Score 2','T2 P1','T2 P2','Winner'],
+    ...MATCHES.map(m=>[m.round,m.court,m.t1a,m.t1b,m.s1,m.s2,m.t2a,m.t2b,winner(m)])
+  ]),'All Matches');
+  const ovS=Object.entries(overall).map(([n,s])=>[n,s.w,s.l,s.w+s.l>0?+(s.w/(s.w+s.l)*100).toFixed(1):0,s.pf,s.pa,s.pf-s.pa]).sort((a,b)=>b[3]-a[3]);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Player','W','L','Win%','PF','PA','+/-'],...ovS]),'Overall Standings');
+  COURTS.forEach(ct=>{
+    const ms=MATCHES.filter(m=>m.court===ct);
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([
+      ['Round','T1 P1','T1 P2','Score 1','Score 2','T2 P1','T2 P2','Winner'],
+      ...ms.map(m=>[m.round,m.t1a,m.t1b,m.s1,m.s2,m.t2a,m.t2b,winner(m)])
+    ]),ct+' Matches');
+    const cs=courtStandings(ct);
+    const csS=Object.entries(cs).map(([n,s])=>[n,s.w,s.l,s.w+s.l>0?+(s.w/(s.w+s.l)*100).toFixed(1):0,s.pf,s.pa,s.pf-s.pa]).sort((a,b)=>b[3]-a[3]);
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Player','W','L','Win%','PF','PA','+/-'],...csS]),ct+' Standings');
+  });
+  XLSX.writeFile(wb,'reclub_scores.xlsx');
+}
+
+document.getElementById('urlInput').addEventListener('keydown', e => { if(e.key==='Enter') loadMatch(); });
+</script>
+</body>
+</html>
